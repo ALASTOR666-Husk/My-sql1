@@ -1,398 +1,277 @@
-# Интерактивная работа с MySQL в изолированном окружении Docker № 1
 
-**Задачи:**
-- запустить «чистый» контейнер
-- подключиться к нему
-- выполнять основные операции с базами данных
-- сделать дамп базы данных
-- выгрузить лог базы данных
+### 1. Запуск Docker-контейнера с MySQL
 
----
+Откройте **Git-Bash** (или терминал VS Code) и выполните:
 
-### 🚀 Шаг 1: Запуск контейнера MySQL
-
-**Подготовка Docker для выполнения этого учебного проекта:**
-
-> ⚠️ Команды ниже удаляют **все** неиспользуемые контейнеры и volumes на хосте. Если у вас есть другие важные контейнеры — пропустите этот блок и удалите только `my-mysql` и `mysql_data` точечно (см. ниже).
-
-1. Получить список текущих контейнеров:
-```shell
-docker ps -a
-```
-2. Остановить и удалить **только учебный** контейнер (если он уже существует):
-```shell
-docker stop имя_контейнера
-docker rm имя_контейнера
-```
-3. Удалить все учебные **volume**
-```shell
-docker volume prune -a
-```
-
-> Если вы уверены, что на хосте нет других важных контейнеров и volumes, можно использовать более широкие команды:
-```shell
-docker stop $(docker ps -q)
-docker container prune
-docker volume prune -a
-```
-> Но **будьте осторожны** — они удаляют всё неиспользуемое, а не только учебный проект.
-
-**Создание каталога проекта:**
-
-- Создайте отдельный каталог `my-mysql` и перейдите в него (`cd my-mysql`).
-- Создайте в каталоге `my-mysql` файл `my.cnf` с содержимым (не забудьте перейти в папку `my-mysql`):
-```ini
-[mysqld]
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-general_log = 1
-general_log_file = /var/lib/mysql/general.log
-log_output = FILE
-
-[client]
-default-character-set = utf8mb4
-
-[mysql]
-default-character-set = utf8mb4
-```
-Параметры `general_log = 1` и `general_log_file = /var/lib/mysql/general.log` нужны для того, чтобы MySQL вела файл журнала записей (лог).
-
-Контейнер с официального образа **MySQL**:
-
-Power Shell
-```shell
-docker run --name my-mysql -e MYSQL_ROOT_PASSWORD=123 -e LANG=C.UTF-8 -v mysql_data:/var/lib/mysql -v ${PWD}/my.cnf:/etc/mysql/conf.d/my.cnf -d mysql:8.0
-```
-Git-Bash:
 ```bash
-docker run --name my-mysql \
-  -e MYSQL_ROOT_PASSWORD=123 \
-  -e LANG=C.UTF-8 \
-  -v mysql_data:/var/lib/mysql \
-  -v $(pwd)/my.cnf:/etc/mysql/conf.d/my.cnf \
-  -d mysql:8.0
+docker run --name mysql-lab -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 -d mysql:8.0
 ```
-Разберём, что делает эта команда:
-*   `--name my-mysql`: присваивает контейнеру понятное имя `my-mysql`, чтобы не использовать его **ID**.
-*   `-e MYSQL_ROOT_PASSWORD=123`: устанавливает пароль для пользователя `root`. В учебном примере — `123`, в реальных проектах используйте надёжный пароль.
-*   `-e LANG=C.UTF-8`: задаёт UTF-8 локаль внутри контейнера (нужна для корректной работы с кириллицей).
-*   `-d`: запускает контейнер в фоновом режиме (detached mode).
-*   `mysql:8.0`: **LTS-версия** официального образа MySQL. Тег `latest` может указывать на инновационную ветку (например, 26.x), которая не предназначена для стабильной учебной работы.
 
-Чтобы убедиться, что контейнер успешно запущен, выполните:
+Проверьте, что контейнер запущен:
 ```bash
 docker ps
 ```
-Вы должны увидеть свой контейнер **my-mysql** в списке работающих.
 
-**Где «физически» хранятся файлы новой базы данных?**
+### 2. Подключение к MySQL
 
-Увидеть физические файлы базы в вашем Docker-контейнере (не обязательно):
-
-PowerShell
-```shell
-docker exec -it my-mysql ls -la /var/lib/mysql
-```
-Вы увидите примерно такую картину:
-```shell
-drwxr-xr-x  mysql mysql  ibdata1
-drwxr-xr-x  mysql mysql  ib_logfile0
-drwxr-xr-x  mysql mysql  ib_logfile1
-drwxr-xr-x  mysql mysql  #innodb_temp
-drwxr-xr-x  mysql mysql  mysql/
-drwxr-xr-x  mysql mysql  performance_schema/
-drwxr-xr-x  mysql mysql  sys/
-```
-> После создания базы `my_database` (см. Шаг 3) в этом каталоге появится подкаталог `my_database/` с файлами таблиц.
-
-**InnoDB** — движок для MySQL
-
----
-
-### 🔌 Шаг 2: Подключение к MySQL в интерактивном режиме
-
-Теперь, когда контейнер работает, к нему нужно подключиться. Для этого используется команда `docker exec`, которая позволяет выполнить команду внутри работающего контейнера.
-
-Выполните следующую команду, чтобы открыть интерактивную оболочку **MySQL** (Git-Bash, Power Shell):
 ```bash
-docker exec -it my-mysql mysql --default-character-set=utf8mb4 -uroot -p
+docker exec -it mysql-lab mysql -uroot -proot
 ```
-Введите пароль `123`. Вы увидите приглашение `mysql>`.
 
-*   `-it`: флаги `-i` (interactive) и `-t` (tty) вместе создают интерактивный терминал.
-*   `mysql -uroot -p`: запускает клиент MySQL от имени пользователя `root` и запрашивает пароль.
+### 3. Включение логирования действий
 
-После ввода пароля вы увидите приглашение `mysql>`. Теперь вы находитесь в интерактивной оболочке и можете выполнять любые SQL-команды.
+Чтобы вести **лог всех ваших команд**, используйте команду `tee` (в Git-Bash) или `script`. Внутри mysql-сессии включите лог SQL-команд:
 
----
-
-### 🛠️ Шаг 3: Основные операции с базами данных и таблицами
-
-Внутри оболочки **MySQL** вы можете выполнять все стандартные SQL-команды.
-
-Проверить кодировку сразу после подключения (не обязательно):
 ```sql
-SHOW VARIABLES LIKE 'character_set%';
+-- Внутри mysql-клиента:
+tee /tmp/actions.log;
 ```
-Если `character_set_client`, `character_set_connection` и `character_set_results` равны `utf8mb4` — всё в порядке.
 
-**1. Просмотр существующих баз данных**
+Теперь всё, что вы вводите и видите, будет сохраняться в `/tmp/actions.log`.  
+По окончании работы:
 ```sql
-SHOW DATABASES;
-```
-Эта команда покажет список всех баз данных, включая системные (`information_schema`, `mysql`, `performance_schema`, `sys`). Системные БД трогать не нужно — они необходимы для работы самой СУБД.
-
-**2. Создание новой базы данных и таблицы в ней**
-
-Получить краткую справку по командам клиента `mysql` (не SQL):
-```sql
-help
-```
-> `help` — это команда клиента `mysql`, а не SQL. Она показывает справку по клиентским командам.
-
-Создадим базу данных с именем `my_database` с таблицей `users`. Рекомендуется сразу указывать кодировку:
-```sql
-CREATE DATABASE my_database
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-USE my_database;
-
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-INSERT INTO users (name, email) VALUES
-  ('Иван Иванов', 'ivan@example.com'),
-  ('Пётр Петров', 'petr@example.com'),
-  ('Мария Сидорова', 'maria@example.com');
-
-SELECT * FROM users;
-```
-Это инструкции, которые указывают СУБД: **«создай базу»**, **«создай таблицу»**, **«вставь строку»**.
-
-Получить существующие БД:
-```sql
-SHOW DATABASES;
+notee;
 ```
 
-**3. Выбор базы данных для работы**
-```sql
-USE my_database;
-```
-Теперь все последующие команды будут применяться к этой базе данных.
-
-Получить существующие таблицы:
-```sql
-SHOW TABLES;
-```
-
-**4. Вставка данных**
-
-Сначала получим текущие данные указанной таблицы:
-```sql
-SELECT * FROM users;
-```
-Затем добавим новые:
-```sql
-INSERT INTO users (name, email) VALUES ('Павел Иванов', 'pavel@example.com');
-INSERT INTO users (name, email) VALUES ('Марк Аврелий', 'mark@example.com');
-```
-Проверка кодировки после вставки (опционально):
-```sql
-SELECT name, HEX(name) FROM users WHERE id = 1;
-```
-> `HEX(name)` покажет байты строки в hex. Для `utf8mb4` кириллица занимает 2 байта на символ — это нормально.
-
-**5. Просмотр данных**
-```sql
-SELECT * FROM users;
-```
-
-**6. Обновление данных**
-```sql
-UPDATE users SET name = 'Иван Петров' WHERE id = 1;
-```
-Просто меняем **name** в указанной записи (по `id`).
-
-Или:
-```sql
-UPDATE users SET name = 'Vasya' WHERE id = 1;
-```
-Посмотреть все строки таблицы:
-```sql
-SELECT * FROM users;
-```
-Посмотреть одну конкретную запись (строку):
-```sql
-SELECT * FROM users WHERE id = 1;
-```
-Получить указанные поля:
-```sql
-SELECT name, email FROM users;
-```
-Или получить одно поле:
-```sql
-SELECT name FROM users;
-```
-Посмотреть только нужные поля (столбцы) для конкретной записи:
-```sql
-SELECT name, email FROM users WHERE id = 1;
-```
-Удобный вертикальный вывод:
-```sql
-SELECT * FROM users WHERE id = 1\G
-```
-`\G` заменяет точку с запятой и не требует `;` в конце.
-
-**7. Создание дампа БД (экспорт в `.sql`-файл на хост для последующего восстановления):**
-
-Выйти из клиента MySQL (на всякий случай):
-```sql
-\q
-```
-Делаем дамп - рекомендуемый вариант, без GTID и с согласованным снимком:
-
-Power Shell
-```shell
-docker exec -e MYSQL_PWD=123 my-mysql mysqldump -uroot `
-  --set-gtid-purged=OFF `
-  --single-transaction `
-  my_database > dump_clean.sql
-```
-Git-Bash
-```shell
-MSYS_NO_PATHCONV=1 docker exec -e MYSQL_PWD=123 my-mysql mysqldump -uroot \
-  --set-gtid-purged=OFF \
-  --single-transaction \
-  my_database > dump_clean.sql
-```
-Linux WSL
-```shell
-docker exec -e MYSQL_PWD=123 my-mysql mysqldump -uroot \
-  --set-gtid-purged=OFF \
-  --single-transaction \
-  my_database > dump_clean.sql
-```
-После этого в папке `my-mysql` появится текстовый файл `dump.sql` (или `dump_clean.sql`), содержимое которого можно увидеть командой:
-
-Git-Bash
-```shell
-cat dump.sql
-```
-`.sql`-файл является текстовым представлением вашей БД (SQL-скрипт). Его можно хранить как резервную копию и использовать для восстановления.
-
-**8. Удаление данных**
-
-Снова войдём в контейнер (Git-Bash, Power Shell, Linux WSL):
-```shell
-docker exec -it my-mysql mysql --default-character-set=utf8mb4 -uroot -p
-```
-Переключимся на нужную нам БД
-```sql
-USE my_database;
-```
-Теперь все последующие команды будут применяться к этой базе данных.
-
-Получить существующие таблицы:
-```sql
-SHOW TABLES;
-```
-Сначала получим содержимое таблицы для последующего сравнения:
-```sql
-SELECT * FROM users;
-```
-Затем удалим указанную запись:
-```sql
-DELETE FROM users WHERE id = 2;
-```
-⚠️ Если удалить `WHERE`, удалятся **все** строки.
-
-**9. Удаление таблицы**
-```sql
-DROP TABLE users;
-```
-Получить существующие таблицы:
-```sql
-SHOW TABLES;
-```
-
-**10. Удаление базы данных**
-```sql
-DROP DATABASE my_database;
-```
-Просмотр существующих баз данных:
-```sql
-SHOW DATABASES;
-```
-Выйти из клиента MySQL:
-```sql
-\q
-```
-> `exit` и `quit` — синонимы `\q`, работают так же.
-
----
-
-### 📝 Шаг 4: Создание лога
-
-Все команды записываются в файл `general.log` внутри контейнера (при `log_output = FILE` в `my.cnf`).
-
-Проверить, что файл существует:
-
-PowerShell, Linux WSL
-```shell
-docker exec my-mysql ls -la /var/lib/mysql/general.log
-```
-> Если файл не создан — проверьте, что в `my.cnf` стоит `log_output = FILE` и `general_log = 1`, и контейнер перезапущен (`docker restart my-mysql`).
-
-Заглянуть в лог:
-
-PowerShell, Linux WSL
-```shell
-docker exec my-mysql cat /var/lib/mysql/general.log
-```
-Забрать лог на хост:
-
-PowerShell
-```shell
-docker exec my-mysql cat /var/lib/mysql/general.log `
-  | Where-Object { $_ -cmatch "Query" -and $_ -cnotmatch "SET NAMES|SET autocommit|SET sql_mode|SET character_set_results|SHOW VARIABLES|SHOW STATUS|SHOW WARNINGS|SELECT @@|SELECT DATABASE\(\)|time_zone" } `
-  > my_actions.log
-```
-Git-Bash
-```shell
-docker exec my-mysql cat /var/lib/mysql/general.log \
-  | grep "Query" \
-  | grep -v -E "SET NAMES|SET autocommit|SET sql_mode|SET character_set_results|SHOW VARIABLES|SHOW STATUS|SHOW WARNINGS|SELECT @@|SELECT DATABASE\(\)|time_zone" \
-  > my_actions.log
-```
-Очистка лога внутри контейнера (PowerShell, Linux WSL):
-```shell
-docker exec my-mysql sh -c ': > /var/lib/mysql/general.log'
+После выхода из контейнера скопируйте лог на хост:
+```bash
+docker cp mysql-lab:/tmp/actions.log ./actions.log
 ```
 
 ---
 
-### 🧹 Шаг 5: Управление Docker-контейнером БД
+## 🗂 Часть 1. Создание БД и «плохой» таблицы
 
-**Остановка контейнера:**
-```bash
-docker stop my-mysql
+```sql
+CREATE DATABASE sales_norm;
+USE sales_norm;
+
+CREATE TABLE sales_unnormalized_2 (
+     report_id     INT,
+     report_date   DATE,
+     customer_id   INT,
+     customer_name VARCHAR(100),
+     product_id    INT,
+     product_name  VARCHAR(100),
+     price         DECIMAL(10,2),
+     quantity      INT
+);
+
+INSERT INTO sales_unnormalized_2 VALUES
+ (1101, '2026-03-05', 12, 'Дания',   101, 'Дыни',      800, 1100),
+ (1101, '2026-03-05', 12, 'Дания',   102, 'Клубника',  150,  300),
+ (1102, '2026-03-07', 23, 'Испания', 103, 'Яблоки',    120, 1700),
+ (1103, '2026-03-08', 25, 'Албания', 104, 'Лимоны',    200,  500),
+ (1104, '2026-03-10', 12, 'Дания',   101, 'Дыни',      800, 2500),
+ (1105, '2026-03-12', 25, 'Албания', 103, 'Яблоки',    120, 2000),
+ (1105, '2026-03-12', 25, 'Албания', 104, 'Лимоны',    200,  700);
 ```
-**Запуск ранее остановленного контейнера:**
-```bash
-docker start my-mysql
-```
-**Просмотр лога контейнера (может пригодиться для отладки):**
-```bash
-docker logs my-mysql
-```
-**Просмотр логов контейнера с перенаправлением в файл (Git-Bash, PowerShell, Linux WSL):**
-```shell
-docker logs my-mysql > log.txt
+<img width="760" height="694" alt="image" src="https://github.com/user-attachments/assets/3e47f173-7e16-48e4-9475-ace2d94618e2" />
+
+Проверка:
+```sql
+SELECT * FROM sales_unnormalized_2;
 ```
 
-Результат оформить в виде отдельного `README.md` и дампом и логом (лог-файл должен содержать минимум служебных записей) в этой же папке
+---
 
-> Если вы обнаружили ошибку в этом тексте — сообщите пожалуйста автору!
+## 🗂 Часть 2. Демонстрация аномалий
+
+### 🔴 Аномалия обновления
+Например, «Дания» решила переименоваться. Нужно править **все** её строки:
+```sql
+UPDATE sales_unnormalized_2
+SET customer_name = 'Kingdom of Denmark'
+WHERE customer_id = 12;
+-- Затронуто 3 строки вместо одной!
+```
+<img width="506" height="124" alt="image" src="https://github.com/user-attachments/assets/188f3ac4-610b-4ff1-ab89-10a19769b90e" />
+
+### 🔴 Аномалия вставки
+Нельзя добавить нового покупателя (например, `30, 'Финляндия'`), пока у него нет отчёта — т.к. `report_id` и `product_id` — часть PK, они не могут быть NULL.
+```sql
+-- ОШИБКА: Column 'report_id' cannot be null
+INSERT INTO sales_unnormalized_2 (report_id, report_date, customer_id, customer_name, product_id, product_name, price, quantity)
+VALUES (NULL, NULL, 30, 'Финляндия', NULL, NULL, NULL, NULL);
+```
+<img width="769" height="98" alt="image" src="https://github.com/user-attachments/assets/7bb51342-86a4-4006-9eac-426260541147" />
+
+### 🔴 Аномалия удаления
+Если удалить все отчёты Испании — исчезнет и информация о самом покупателе:
+```sql
+DELETE FROM sales_unnormalized_2 WHERE customer_id = 23;
+-- Вместе с отчётом 1102 теряем покупателя "Испания"
+```
+<img width="529" height="71" alt="image" src="https://github.com/user-attachments/assets/7bf27240-8c14-4fb1-a798-70f308cbfd8e" />
+
+---
+
+## 🗂 Часть 3. Дамп «до» нормализации
+
+Выйти из mysql (`exit`) и в Git-Bash:
+```bash
+docker exec mysql-lab mysqldump -uroot -proot sales_norm > dump_before.sql
+```
+
+---
+
+## 🗂 Часть 4. Нормализация — создание 4 таблиц
+
+Снова заходим в mysql:
+```bash
+docker exec -it mysql-lab mysql -uroot -proot
+USE sales_norm;
+tee /tmp/actions.log;   -- если ещё не включён
+```
+
+```sql
+-- 1. Справочник покупателей
+CREATE TABLE customers (
+    customer_id   INT PRIMARY KEY,
+    customer_name VARCHAR(100) NOT NULL
+);
+
+-- 2. Справочник товаров
+CREATE TABLE products (
+    product_id   INT PRIMARY KEY,
+    product_name VARCHAR(100) NOT NULL,
+    price        DECIMAL(10,2) NOT NULL
+);
+
+-- 3. Шапки отчётов
+CREATE TABLE reports (
+    report_id   INT PRIMARY KEY,
+    report_date DATE NOT NULL,
+    customer_id INT NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+
+-- 4. Позиции отчётов
+CREATE TABLE report_items (
+    report_id  INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity   INT NOT NULL,
+    PRIMARY KEY (report_id, product_id),
+    FOREIGN KEY (report_id)  REFERENCES reports(report_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+```
+<img width="669" height="640" alt="image" src="https://github.com/user-attachments/assets/b7f957a0-bdf9-455d-9a0b-ff59731f7985" />
+
+---
+
+## 🗂 Часть 5. Перенос данных через `INSERT ... SELECT`
+
+```sql
+-- Покупатели
+INSERT INTO customers
+SELECT DISTINCT customer_id, customer_name
+FROM sales_unnormalized_2;
+
+-- Товары
+INSERT INTO products
+SELECT DISTINCT product_id, product_name, price
+FROM sales_unnormalized_2;
+
+-- Отчёты
+INSERT INTO reports
+SELECT DISTINCT report_id, report_date, customer_id
+FROM sales_unnormalized_2;
+
+-- Позиции отчётов
+INSERT INTO report_items (report_id, product_id, quantity)
+SELECT report_id, product_id, quantity
+FROM sales_unnormalized_2;
+```
+<img width="741" height="428" alt="image" src="https://github.com/user-attachments/assets/0c933e9c-59fb-42ba-b681-07bd158790d6" />
+
+---
+
+## 🗂 Часть 6. Проверка целостности данных
+
+### Количество записей
+```sql
+SELECT 'Исходная' AS src, COUNT(*) AS cnt FROM sales_unnormalized_2
+UNION ALL
+SELECT 'reports',   COUNT(*) FROM reports
+UNION ALL
+SELECT 'customers', COUNT(*) FROM customers
+UNION ALL
+SELECT 'products',  COUNT(*) FROM products
+UNION ALL
+SELECT 'items',     COUNT(*) FROM report_items;
+```
+<img width="587" height="316" alt="image" src="https://github.com/user-attachments/assets/b7e6296c-c8b3-4b5e-a16d-a1f15a194965" />
+
+Ожидаем: 7 строк в исходной и в `report_items`, 3 отчёта, 3 покупателя, 4 товара.
+
+### Сумма продаж (до и после)
+```sql
+SELECT SUM(price * quantity) AS total_bad FROM sales_unnormalized_2;
+
+SELECT SUM(p.price * ri.quantity) AS total_good
+FROM report_items ri
+JOIN products p ON p.product_id = ri.product_id;
+```
+Обе суммы должны совпасть (**2 015 500**).
+
+### Тестовые запросы
+Сколько потратил покупатель с кодом 12?
+```sql
+SELECT c.customer_name, SUM(p.price * ri.quantity) AS total_spent
+FROM customers c
+JOIN reports r     ON r.customer_id = c.customer_id
+JOIN report_items ri ON ri.report_id = r.report_id
+JOIN products p    ON p.product_id  = ri.product_id
+WHERE c.customer_id = 12
+GROUP BY c.customer_name;
+```
+
+---
+
+## 🗂 Часть 7. Демонстрация исчезновения аномалий
+
+✅ **Обновление** — меняем имя покупателя одной строкой:
+```sql
+UPDATE customers SET customer_name = 'Kingdom of Denmark' WHERE customer_id = 12;
+```
+
+✅ **Вставка** — можно добавить нового покупателя без отчёта:
+```sql
+INSERT INTO customers (customer_id, customer_name) VALUES (30, 'Финляндия');
+```
+
+✅ **Удаление** — удаляем отчёт, покупатель остаётся:
+```sql
+DELETE FROM report_items WHERE report_id = 1102;
+DELETE FROM reports        WHERE report_id = 1102;
+-- Покупатель "Испания" по-прежнему в таблице customers
+SELECT * FROM customers WHERE customer_id = 23;
+```
+
+---
+
+## 🗂 Часть 8. Дамп «после» нормализации
+
+```bash
+docker exec mysql-lab mysqldump -uroot -proot sales_norm > dump_after.sql
+```
+
+---
+
+## 🗂 Часть 9. Финализация
+
+```sql
+-- Переименовываем старую таблицу (или удаляем)
+RENAME TABLE sales_unnormalized_2 TO sales_unnormalized_2_backup;
+
+notee;   -- отключаем лог
+exit;
+```
+
+Копируем лог на хост:
+```bash
+docker cp mysql-lab:/tmp/actions.log ./actions.log
+```
+
+---
